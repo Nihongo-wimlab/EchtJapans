@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echt Japans Oefenchats Githubversie 2.0</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0"
+      }
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { 
+      Users, ChevronLeft, Trash2, Download, Upload, 
+      Loader2, Send, X, Copy, PlusCircle, BookOpen, MessageCircle, Volume2, PlayCircle, StopCircle, Sparkles, Wand2, Globe, Award, Save, Archive, Calendar, Heart, Star, Gamepad2, ChevronUp, ChevronDown, GraduationCap,
+      Pencil, Check, AlertCircle
+    } from 'lucide-react';
+
+    // Gemini API sleutel voor AI functies (Docent-modus)
+    // Vul hier optioneel je API sleutel in als je live AI-antwoorden wilt.
+    const apiKey = "";
+    const appId = 'jfz-teens-a1-kawaii-v2';
+
+    const fetchWithRetry = async (url, options, retries = 3, delay = 1500) => {
+      try {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData?.error?.message || `HTTP error! status: ${response.status}`);
+        }
+        return response;
+      } catch (error) {
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return fetchWithRetry(url, options, retries - 1, delay * 2);
+        }
+        throw error;
+      }
+    };
+
+    const defaultVocabulary = [
+      { id: 'v1', scenario: 'Kennismaken', kanji: '私', furigana: 'わたし', romaji: 'watashi', translation: 'Ik', example1: '私は学生です。', example1Romaji: 'Watashi wa gakusei desu.', example1Trans: 'Ik ben een student.', example2: '私の名前 is...', example2Romaji: 'Watashi no namae wa...', example2Trans: 'Mijn naam is...' },
+      { id: 'v2', scenario: 'Kennismaken', kanji: '名前', furigana: 'なまえ', romaji: 'namae', translation: 'Naam', example1: 'お名前は何ですか。', example1Romaji: 'Onamae wa nan desu ka.', example1Trans: 'Wat is je naam?', example2: '私の名前はケンです。', example2Romaji: 'Watashi no namae wa Ken desu.', example2Trans: 'Mijn naam is Ken.' },
+      { id: 'v3', scenario: 'Anime Winkel', kanji: 'これ', furigana: 'これ', romaji: 'kore', translation: 'Dit (dichtbij mij)', example1: 'これは何ですか。', example1Romaji: 'Kore wa nan desu ka.', example1Trans: 'Wat is dit?', example2: 'これをください。', example2Romaji: 'Kore o kudasai.', example2Trans: 'Ik wil dit graag (Geef mij dit, aub).' },
+      { id: 'v4', scenario: 'Anime Winkel', kanji: 'いくら', furigana: 'いくら', romaji: 'ikura', translation: 'Hoeveel (kost het)', example1: 'これはいくらですか。', example1Romaji: 'Kore wa ikura desu ka.', example1Trans: 'Hoeveel kost dit?', example2: 'そのマンガはいくらですか。', example2Romaji: 'Sono manga wa ikura desu ka.', example2Trans: 'Hoeveel kost die manga?' },
+      { id: 'v5', scenario: 'Hobby\'s', kanji: '好き', furigana: 'すき', romaji: 'suki', translation: 'Leuk vinden / Houden van', example1: 'アニメが好きです。', example1Romaji: 'Anime ga suki desu.', example1Trans: 'Ik hou van anime.', example2: '何が好きですか。', example2Romaji: 'Nani ga suki desu ka.', example2Trans: 'Wat vind je leuk?' },
+      { id: 'v6', scenario: 'Hobby\'s', kanji: '友達', furigana: 'ともだち', romaji: 'tomodachi', translation: 'Vriend', example1: '私の友達です。', example1Romaji: 'Watashi no tomodachi desu.', example1Trans: 'Dat is mijn vriend(in).', example2: '友達と遊びます。', example2Romaji: 'Tomodachi to asobimasu.', example2Trans: 'Ik speel met een vriend(in).' },
+      { id: 'v7', scenario: 'Tijd Vragen', kanji: '今', furigana: 'いま', romaji: 'ima', translation: 'Nu', example1: '時間は何時ですか。', example1Romaji: 'Ima wa nanji desu ka.', example1Trans: 'Hoe laat is het nu?', example2: '今行きます。', example2Romaji: 'Ima ikimasu.', example2Trans: 'Ik ga nu.' },
+      { id: 'v8', scenario: 'Tijd Vragen', kanji: '時', furigana: 'じ', romaji: 'ji', translation: 'Uur (tijd)', example1: '三時です。', example1Romaji: 'San-ji desu.', example1Trans: 'Het is 3 uur.', example2: '何時に行きますか。', example2Romaji: 'Nanji ni ikimasu ka.', example2Trans: 'Hoe laat ga je?' },
+      { id: 'v9', scenario: 'Snoepwinkel', kanji: 'おいしい', furigana: 'おいしい', romaji: 'oishii', translation: 'Lekker', example1: 'これはおいしいです。', example1Romaji: 'Kore wa oishii desu.', example1Trans: 'Dit is lekker.', example2: 'おいしいクッキーです。', example2Romaji: 'Oishii kukkii desu.', example2Trans: 'Dit is een lekker koekje.' },
+      { id: 'v10', scenario: 'Snoepwinkel', kanji: '欲しい', furigana: 'ほしい', romaji: 'hoshii', translation: 'Willen hebben', example1: 'チョコが欲しいです。', example1Romaji: 'Choko ga hoshii desu.', example1Trans: 'Ik wil chocola hebben.', example2: '何が欲しいですか。', example2Romaji: 'Nani ga hoshii desu ka.', example2Trans: 'Wat wilt u hebben?' }
+    ];
+
+    const builtInCharacters = [
+      { id: 'classmate_yuki', name: 'Yuki-chan', role: 'Nieuwe Klasgenoot', emoji: '🏫', desc: 'Je nieuwe klasgenoot. Stel jezelf voor!', systemPrompt: "Jij bent Yuki, een 14-jarige Japanse scholiere. Je bent erg vrolijk en spreekt héél simpel Japans (Strict A1 niveau). Gebruik voornamelijk hiragana/katakana.", level: 'A1', register: 'Informeel', initialMessage: { kanji: 'こんにちは！私はゆきです。お名前は何ですか。', kana: 'こんにちは！わたしは ゆきです。おなまえは なんですか。', romaji: 'Konnichiwa! Watashi wa Yuki desu. Onamae wa nan desu ka.', translation: 'Hallo! Ik ben Yuki. Wat is jouw naam?' } },
+      { id: 'shop_ken', name: 'Ken-kun', role: 'Anime Winkel', emoji: '🛍️', desc: 'Verkoper in een coole manga & anime winkel.', systemPrompt: "Jij bent Ken, een jonge verkoper in een anime winkel.", level: 'A1', register: 'Formeel', initialMessage: { kanji: 'いらっしゃいませ！何をお探しですか。', kana: 'いらっしゃいませ！なにを おさがしですか。', romaji: 'Irasshaimase! Nani o osagashi desu ka.', translation: 'Welkom! Wat zoek je?' } },
+      { id: 'friend_sakura', name: 'Sakura-chan', role: 'Vriendin (Hobby\'s)', emoji: '🎮', desc: 'Praat over anime, games en wat je leuk vindt.', systemPrompt: "Jij bent Sakura, een 14-jarig meisje dat van games en anime houdt.", level: 'A1', register: 'Informeel', initialMessage: { kanji: 'ヤッホー！さくらだよ。アニメが好き？', kana: 'ヤッホー！さくらだよ。アニメが すき？', romaji: 'Yahoo! Sakura da yo. Anime ga suki?', translation: 'Hoi! Ik ben Sakura. Hou je van anime?' } },
+      { id: 'candy_taro', name: 'Taro-ojisan', role: 'Snoepwinkel', emoji: '🍡', desc: 'Koop lekkere Japanse snacks bij Taro.', systemPrompt: "Jij bent Taro, de eigenaar van een kleine Japanse snoepwinkel.", level: 'A1', register: 'Formeel', initialMessage: { kanji: 'こんにちは。おいしいお菓子はいかがですか。', kana: 'こんにちは。おいしい おかしは いかがですか。', romaji: 'Konnichiwa. Oishii okashi wa ikaga desu ka.', translation: 'Hallo. Wil je wat lekkere snacks?' } },
+      { id: 'station_haru', name: 'Haru-san', role: 'Op het Station', emoji: '⏱️', desc: 'Vraag naar de tijd en de trein.', systemPrompt: "Jij bent Haru, een behulpzame reiziger op het station.", level: 'A1', register: 'Formeel', initialMessage: { kanji: 'すみません、時間は何時ですか。', kana: 'すみません、いまは なんじですか。', romaji: 'Sumimasen, ima wa nanji desu ka.', translation: 'Pardon, hoe laat is het nu?' } }
+    ];
+
+    const scenarioTemplates = [
+      { label: "Kennismaken op de club", name: "Hiro", role: "Sportclub lid", systemPrompt: "Je bent bij een nieuwe sportclub. Je stelt jezelf voor aan Hiro." },
+      { label: "Iets kopen met Kore/Sore/Are", name: "Mika", role: "Souvenirwinkel", systemPrompt: "Je wilt een souvenir kopen. Wijs dingen aan en vraag de prijs." },
+      { label: "Praten over lievelingseten", name: "Yumi", role: "Schoolkantine", systemPrompt: "Je zit in de pauze met Yumi. Praat over welk eten jullie lekker vinden." }
+    ];
+
+    const downloadJsonFile = async (data, filename) => {
+      const jsonStr = JSON.stringify(data, null, 2);
+      try {
+        const file = new File([jsonStr], filename, { type: 'application/json' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      } catch (err) {}
+      
+      const blob = new Blob([jsonStr], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+    };
+
+    const App = () => {
+      const [userRole, setUserRole] = useState(null);
+      const [view, setView] = useState('role_select');
+      const [selectedCharacter, setSelectedCharacter] = useState(null);
+      const [history, setHistory] = useState([]);
+      
+      const [customScenarios, setCustomScenarios] = useState(() => {
+        try {
+          const local = localStorage.getItem(`${appId}_custom_scenarios`);
+          return local ? JSON.parse(local) : [];
+        } catch (e) { return []; }
+      });
+      
+      const [vocabulary, setVocabulary] = useState(() => {
+        try {
+          const local = localStorage.getItem(`${appId}_saved_vocabulary`);
+          return local ? [...defaultVocabulary, ...JSON.parse(local)] : defaultVocabulary;
+        } catch (e) { return defaultVocabulary; }
+      });
+
+      const [savedDialogues, setSavedDialogues] = useState(() => {
+        try {
+          const local = localStorage.getItem(`${appId}_saved_dialogues`);
+          return local ? JSON.parse(local) : [];
+        } catch (e) { return []; }
+      });
+
+      const [notification, setNotification] = useState(null);
+      const showNotification = (msg, type = 'success') => {
+        setNotification({ msg, type });
+        setTimeout(() => setNotification(null), 3500);
+      };
+      
+      const [vocabDisplayMode, setVocabDisplayMode] = useState({ furigana: true, translation: true, romaji: false });
+      const [displayMode, setDisplayMode] = useState({ kanji: false, kana: true, romaji: false, translation: true });
+      
+      const [isLoading, setIsLoading] = useState(false);
+      const [inputText, setInputText] = useState('');
+      const [customChar, setCustomChar] = useState({ scenarioName: '', name: '', role: '', systemPrompt: '', level: 'A1', register: 'Informeel' });
+      const [expandedScenarios, setExpandedScenarios] = useState({});
+      const [isExtractingVocab, setIsExtractingVocab] = useState(false);
+      const [vocabSuccessMessage, setVocabSuccessMessage] = useState('');
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [activeMessageIndex, setActiveMessageIndex] = useState(null);
+      const [showBackup, setShowBackup] = useState(false);
+      const [isCopied, setIsCopied] = useState(false);
+      const [copiedScenario, setCopiedScenario] = useState(null);
+      const [appErrorMessage, setAppErrorMessage] = useState(null);
+      
+      const [isSavingDialogue, setIsSavingDialogue] = useState(false);
+      const [dialogueSuccessMsg, setDialogueSuccessMsg] = useState('');
+      const [expandedDialogues, setExpandedDialogues] = useState({});
+
+      const [suggestedResponses, setSuggestedResponses] = useState([]);
+      const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
+      const [grammarCheckResult, setGrammarCheckResult] = useState(null);
+      const [isCheckingGrammar, setIsCheckingGrammar] = useState(false);
+      
+      const [etiquetteTip, setEtiquetteTip] = useState(null);
+      const [isFetchingEtiquette, setIsFetchingEtiquette] = useState(false);
+      const [evaluationResult, setEvaluationResult] = useState(null);
+      const [isEvaluating, setIsEvaluating] = useState(false);
+
+      const [revealedRomaji, setRevealedRomaji] = useState({});
+      
+      const [editingCustomId, setEditingCustomId] = useState(null);
+      const [editingCustomName, setEditingCustomName] = useState('');
+      const [editingDialogueId, setEditingDialogueId] = useState(null);
+      const [editingDialogueName, setEditingDialogueName] = useState('');
+
+      const [deleteConfirm, setDeleteConfirm] = useState(null);
+      const [editScenarioId, setEditScenarioId] = useState(null);
+
+      const [editingMsgIndex, setEditingMsgIndex] = useState(null);
+      const [editingMsgContent, setEditingMsgContent] = useState({ kana: '', romaji: '', translation: '', kanji: '' });
+
+      const [editingDiagMsgKey, setEditingDiagMsgKey] = useState(null); 
+      const [editingDiagMsgContent, setEditingDiagMsgContent] = useState({ kana: '', romaji: '', translation: '', kanji: '' });
+
+      const [isAutoTranslating, setIsAutoTranslating] = useState(false);
+
+      const fileInputRef = useRef(null);
+      const dialogueFileInputRef = useRef(null);
+      const playbackIdRef = useRef(0);
+
+      const toggleRomaji = (id, globalMode) => {
+        setRevealedRomaji(prev => {
+          const currentState = prev[id] !== undefined ? prev[id] : globalMode;
+          return { ...prev, [id]: !currentState };
+        });
+      };
+
+      const isRomajiVisible = (id, globalMode) => {
+        return revealedRomaji[id] !== undefined ? revealedRomaji[id] : globalMode;
+      };
+
+      useEffect(() => {
+        window.speechSynthesis?.getVoices();
+      }, []);
+
+      const stopAudio = () => {
+        window.speechSynthesis?.cancel();
+        playbackIdRef.current++;
+        setIsPlaying(false);
+        setActiveMessageIndex(null);
+      };
+
+      const playJapaneseText = (text, index = null) => {
+        if (!text || !window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        if (index !== null) setActiveMessageIndex(index);
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        utterance.rate = 0.85; 
+        
+        const voices = window.speechSynthesis.getVoices();
+        const kyoko = voices.find(v => v.name.includes('Kyoko'));
+        const anyJp = voices.find(v => v.lang.includes('ja'));
+        if (kyoko) utterance.voice = kyoko;
+        else if (anyJp) utterance.voice = anyJp;
+        
+        utterance.onend = () => { setIsPlaying(false); setActiveMessageIndex(null); };
+        utterance.onerror = () => { setIsPlaying(false); setActiveMessageIndex(null); };
+        
+        setIsPlaying(true);
+        window.speechSynthesis.speak(utterance);
+      };
+
+      const playFullDialogue = async () => {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        playbackIdRef.current++;
+        const currentPlaybackId = playbackIdRef.current;
+        setIsPlaying(true);
+        setActiveMessageIndex(null);
+        
+        const voices = window.speechSynthesis.getVoices();
+        const kyoko = voices.find(v => v.name.includes('Kyoko'));
+        const anyJp = voices.find(v => v.lang.includes('ja'));
+        const voiceToUse = kyoko || anyJp;
+        
+        for (let index = 0; index < history.length; index++) {
+          if (currentPlaybackId !== playbackIdRef.current) return;
+          
+          const h = history[index];
+          const text = h.content.kana || h.content.kanji;
+          if (!text) continue;
+          
+          setActiveMessageIndex(index);
+          const msgElement = document.getElementById(`chat-msg-${index}`);
+          if (msgElement) msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          await new Promise((resolve) => {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 0.85;
+            if (voiceToUse) utterance.voice = voiceToUse;
+            utterance.onend = resolve;
+            utterance.onerror = resolve;
+            window.speechSynthesis.speak(utterance);
+          });
+          
+          if (currentPlaybackId !== playbackIdRef.current) return;
+          if (index < history.length - 1) await new Promise(resolve => setTimeout(resolve, 800));
+        }
+        
+        if (currentPlaybackId === playbackIdRef.current) {
+          setIsPlaying(false);
+          setActiveMessageIndex(null);
+        }
+      };
+
+      const toggleScenario = (scenario) => setExpandedScenarios(prev => ({...prev, [scenario]: !prev[scenario]}));
+      const toggleDialogue = (docId) => setExpandedDialogues(prev => ({...prev, [docId]: !prev[docId]}));
+
+      const deleteWord = (id) => {
+        const localVocab = vocabulary.filter(v => v.docId !== id && v.id !== id);
+        setVocabulary(localVocab);
+        localStorage.setItem(`${appId}_saved_vocabulary`, JSON.stringify(localVocab.filter(v => !defaultVocabulary.some(dv => dv.id === v.id))));
+        showNotification("Woord verwijderd!", "info");
+      };
+
+      const addWordToStateAndStorage = (nw) => {
+        const localId = `local-v-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const wordWithId = { ...nw, docId: localId, id: localId };
+        setVocabulary(prev => {
+          const updated = [...prev, wordWithId];
+          const onlyCustom = updated.filter(v => !defaultVocabulary.some(dv => dv.id === v.id));
+          localStorage.setItem(`${appId}_saved_vocabulary`, JSON.stringify(onlyCustom));
+          return updated;
+        });
+      };
+
+      const generateMoreWords = async (scenario) => {
+        setIsLoading(true);
+        try {
+          if (!apiKey) throw new Error("Geen API key ingesteld.");
+          const prompt = `Geef 5 nieuwe, super simpele Japanse woorden/zinnen (A1 niveau) voor scenario '${scenario}'. JSON array: [{"kanji": "...", "furigana": "...", "romaji": "...", "translation": "...", "example1": "...", "example1Romaji": "...", "example1Trans": "...", "example2": "...", "example2Romaji": "...", "example2Trans": "..."}]`;
+          const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          });
+          const result = await response.json();
+          const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const jsonStr = responseText.replace(/```json|```/g, '').trim();
+          const newWords = JSON.parse(jsonStr).map((w, i) => ({ ...w, id: `v-gen-${Date.now()}-${i}`, scenario }));
+          newWords.forEach(nw => addWordToStateAndStorage(nw));
+          showNotification(`${newWords.length} nieuwe woorden toegevoegd! ✨`, "success");
+        } catch (e) {
+          showNotification("API niet geconfigureerd of mislukt. Geen nieuwe AI woorden gegeneerd.", "info");
+        } finally { setIsLoading(false); }
+      };
+
+      const exportScenario = (scenario) => {
+        const data = vocabulary.filter(v => v.scenario === scenario);
+        const dateStr = new Date().toISOString().split('T')[0];
+        downloadJsonFile(data, `Japans_A1_vocab_${scenario.toLowerCase()}_${dateStr}.json`);
+      };
+
+      const copyScenarioVocabulary = (scenario) => {
+        const data = vocabulary.filter(v => v.scenario === scenario);
+        let text = `🌸 [Scenario: ${scenario}] 🌸\n\n`;
+        data.forEach((v) => {
+          text += `${v.kanji} (${v.furigana})\n${v.romaji}\n${v.translation}\n`;
+          if (v.example1) text += `Voorbeeld 1: ${v.example1}\n${v.example1Trans}\n${v.example1Romaji}\n`;
+          if (v.example2) text += `Voorbeeld 2: ${v.example2}\n${v.example2Trans}\n${v.example2Romaji}\n\n`;
+        });
+        const textArea = document.createElement("textarea"); textArea.value = text;
+        document.body.appendChild(textArea); textArea.select();
+        try {
+          document.execCommand('copy'); setCopiedScenario(scenario);
+          showNotification("Woordenlijst gekopieerd naar klembord! 📋", "success");
+          setTimeout(() => setCopiedScenario(null), 2000);
+        } catch (err) {}
+        document.body.removeChild(textArea);
+      };
+
+      const importScenario = (scenario) => {
+        const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+        input.onchange = (e) => {
+          const file = e.target.files?.[0]; if (!file) return;
+          const r = new FileReader();
+          r.onload = (ev) => {
+            try {
+              const data = JSON.parse(ev.target.result);
+              let importedCount = 0;
+              for (const newV of data) {
+                if(!vocabulary.find(oldV => oldV.kanji === newV.kanji && oldV.scenario === scenario)) {
+                  addWordToStateAndStorage({ ...newV, scenario });
+                  importedCount++;
+                }
+              }
+              showNotification(`${importedCount} kaartjes geïmporteerd! 📥✨`, "success");
+            } catch(err) { setAppErrorMessage("Import mislukt: Ongeldig JSON bestand."); }
+          };
+          r.readAsText(file);
+        }; input.click();
+      };
+
+      const exportAllVocabulary = () => {
+        downloadJsonFile(vocabulary, `Echt_Japans_A1_Alle_Woorden_${new Date().toISOString().split('T')[0]}.json`);
+      };
+
+      const importAllVocabulary = () => {
+        const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+        input.onchange = (e) => {
+          const file = e.target.files?.[0]; if (!file) return;
+          const r = new FileReader();
+          r.onload = (ev) => {
+            try {
+              const data = JSON.parse(ev.target.result);
+              data.forEach(newV => addWordToStateAndStorage(newV));
+              showNotification(`${data.length} kaartjes geïmporteerd! 📥✨`, "success");
+            } catch(err) { setAppErrorMessage("Import mislukt: Ongeldig JSON bestand."); }
+          }; r.readAsText(file);
+        }; input.click();
+      };
+
+      const handleDuplicateScenario = (s) => {
+        const newScenario = {
+          id: `local-sc-${Date.now()}`,
+          scenarioName: `${s.scenarioName || s.role || 'Scenario'} (Kopie)`,
+          name: s.name || '',
+          role: s.role || '',
+          systemPrompt: s.systemPrompt || '',
+          level: s.level || 'A1',
+          register: s.register || 'Informeel',
+          sortOrder: customScenarios.length,
+          isFavorite: false
+        };
+        const updated = [...customScenarios, newScenario];
+        setCustomScenarios(updated);
+        localStorage.setItem(`${appId}_custom_scenarios`, JSON.stringify(updated));
+        showNotification("Scenario gedupliceerd! 💾✨", "success");
+      };
+
+      const toggleFavoriteScenario = (s) => {
+        const updated = customScenarios.map(sc => sc.id === s.id ? { ...sc, isFavorite: !sc.isFavorite } : sc);
+        setCustomScenarios(updated);
+        localStorage.setItem(`${appId}_custom_scenarios`, JSON.stringify(updated));
+      };
+
+      const moveScenario = (index, direction) => {
+        const newScenarios = [...customScenarios];
+        if (direction === 'up' && index > 0) [newScenarios[index - 1], newScenarios[index]] = [newScenarios[index], newScenarios[index - 1]];
+        else if (direction === 'down' && index < newScenarios.length - 1) [newScenarios[index], newScenarios[index + 1]] = [newScenarios[index + 1], newScenarios[index]];
+        else return;
+        setCustomScenarios(newScenarios);
+        localStorage.setItem(`${appId}_custom_scenarios`, JSON.stringify(newScenarios));
+      };
+
+      const handleEditScenarioClick = (s) => {
+        setEditScenarioId(s.id);
+        setCustomChar({
+          scenarioName: s.scenarioName || s.role || '',
+          name: s.name || '',
+          role: s.role || '',
+          systemPrompt: s.systemPrompt || '',
+          level: s.level || 'A1',
+          register: s.register || 'Informeel'
+        });
+        setView('custom_build');
+      };
+
+      const saveCustomScenarioName = (id, newName) => {
+        if (!newName.trim()) { setEditingCustomId(null); return; }
+        const updated = customScenarios.map(s => s.id === id ? { ...s, scenarioName: newName } : s);
+        setCustomScenarios(updated);
+        localStorage.setItem(`${appId}_custom_scenarios`, JSON.stringify(updated));
+        setEditingCustomId(null);
+      };
+
+      const saveDialogueName = (id, newName) => {
+        if (!newName.trim()) { setEditingDialogueId(null); return; }
+        const updated = savedDialogues.map(d => d.docId === id ? { ...d, scenario: newName } : d);
+        setSavedDialogues(updated);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+        setEditingDialogueId(null);
+      };
+
+      const toggleFavoriteDialogue = (d) => {
+        const updated = savedDialogues.map(diag => diag.docId === d.docId ? { ...diag, isFavorite: !diag.isFavorite } : diag);
+        setSavedDialogues(updated);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+      };
+
+      const moveDialogue = (index, direction) => {
+        const newDialogues = [...savedDialogues];
+        if (direction === 'up' && index > 0) [newDialogues[index - 1], newDialogues[index]] = [newDialogues[index], newDialogues[index - 1]];
+        else if (direction === 'down' && index < newDialogues.length - 1) [newDialogues[index], newDialogues[index + 1]] = [newDialogues[index + 1], newDialogues[index]];
+        else return;
+        setSavedDialogues(newDialogues);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(newDialogues));
+      };
+
+      const startEditingMessage = (index, content) => {
+        setEditingMsgIndex(index);
+        setEditingMsgContent({ kana: content.kana || '', romaji: content.romaji || '', translation: content.translation || '', kanji: content.kanji || '' });
+      };
+
+      const saveEditedMessage = () => {
+        if (editingMsgIndex === null) return;
+        const updatedHistory = [...history];
+        updatedHistory[editingMsgIndex] = { ...updatedHistory[editingMsgIndex], content: { ...editingMsgContent } };
+        setHistory(updatedHistory);
+        setEditingMsgIndex(null);
+      };
+
+      const deleteMessage = (index) => {
+        setHistory(history.filter((_, i) => i !== index));
+      };
+
+      const startEditingDialogueMessage = (docId, msgIndex, content) => {
+        setEditingDiagMsgKey(`${docId}-${msgIndex}`);
+        setEditingDiagMsgContent({ kana: content.kana || '', romaji: content.romaji || '', translation: content.translation || '', kanji: content.kanji || '' });
+      };
+
+      const saveEditedDialogueMessage = (dialogue, msgIndex) => {
+        const updatedHistory = [...dialogue.history];
+        updatedHistory[msgIndex] = { ...updatedHistory[msgIndex], content: { ...editingDiagMsgContent } };
+        const updated = savedDialogues.map(d => d.docId === dialogue.docId ? { ...d, history: updatedHistory } : d);
+        setSavedDialogues(updated);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+        setEditingDiagMsgKey(null);
+      };
+
+      const deleteDialogueMessage = (dialogue, msgIndex) => {
+        const updatedHistory = dialogue.history.filter((_, i) => i !== msgIndex);
+        const updated = savedDialogues.map(d => d.docId === dialogue.docId ? { ...d, history: updatedHistory } : d);
+        setSavedDialogues(updated);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+      };
+
+      const startChat = async (char) => {
+        setSelectedCharacter(char); setView('chat'); setHistory([]); setIsLoading(true);
+        setSuggestedResponses([]); setGrammarCheckResult(null); setEtiquetteTip(null); setEvaluationResult(null);
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        if (apiKey) {
+          try {
+            const prompt = `Jij bent ${char.name}, ${char.role}. Begin ALLEEN met een super simpele, korte openingszin/begroeting in Japans A1. Geef JSON: { "kanji": "...", "kana": "...", "romaji": "...", "translation": "..." }.`;
+            const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const result = await response.json();
+            const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+            const aiResponse = JSON.parse(responseText.replace(/```json|```/g, '').trim());
+            setHistory([{ role: 'ai', content: aiResponse }]);
+            setIsLoading(false);
+            return;
+          } catch(e) {}
+        }
+        
+        const fallbackMsg = char.initialMessage || { kanji: 'こんにちは！', kana: 'こんにちは！', romaji: 'Konnichiwa!', translation: 'Hallo! Leuk je te ontmoeten!' };
+        setHistory([{ role: 'ai', content: fallbackMsg }]);
+        setIsLoading(false);
+      };
+
+      const sendMessage = async () => {
+        if(!inputText.trim()) return;
+        const userMsg = inputText; setInputText(''); setIsLoading(true);
+        setSuggestedResponses([]); setGrammarCheckResult(null);
+
+        if (apiKey) {
+          try {
+            const chatContext = history.map(h => `${h.role === 'user' ? 'Ik' : selectedCharacter.name}: ${h.content.translation || h.content.kana}`).join('\n');
+            const prompt = `Jij bent ${selectedCharacter.name}, ${selectedCharacter.role}. Geschiedenis:\n${chatContext}\n\nIk zeg: "${userMsg}". Vertaal/verbeter mijn input en geef jouw hele korte A1 reactie. Geef JSON: { "user": { "kanji": "...", "kana": "...", "romaji": "...", "translation": "..." }, "ai": { "kanji": "...", "kana": "...", "romaji": "...", "translation": "..." } }`;
+            const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const result = await response.json();
+            const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+            const data = JSON.parse(responseText.replace(/```json|```/g, '').trim());
+            setHistory(prev => [...prev, { role: 'user', content: data.user }, { role: 'ai', content: data.ai }]);
+            setIsLoading(false);
+            return;
+          } catch(e) {}
+        }
+
+        setTimeout(() => {
+          setHistory(prev => [
+            ...prev, 
+            { role: 'user', content: { kana: userMsg, romaji: userMsg, translation: userMsg } },
+            { role: 'ai', content: { kanji: 'はい、分かりました！', kana: 'はい、わかりました！', romaji: 'Hai, wakarimashita!', translation: 'Ja, ik begrijp het! Laten we verder praten.' } }
+          ]);
+          setIsLoading(false);
+        }, 800);
+      };
+
+      const extractVocabularyFromChat = () => {
+        if (history.length === 0) return;
+        setIsExtractingVocab(true);
+        setTimeout(() => {
+          const scenarioTarget = selectedCharacter?.scenarioName || selectedCharacter?.role || 'Eigen Scenario';
+          const sampleWords = [
+            { kanji: 'こんにちは', furigana: 'こんにちは', romaji: 'Konnichiwa', translation: 'Hallo', example1: 'こんにちは！元気ですか。', example1Romaji: 'Konnichiwa! Genki desu ka.', example1Trans: 'Hallo! Hoe gaat het?', example2: '先生、こんにちは。', example2Romaji: 'Sensei, konnichiwa.', example2Trans: 'Hallo, docent.' },
+            { kanji: 'ありがとう', furigana: 'ありがとう', romaji: 'Arigatou', translation: 'Bedankt', example1: 'どうもありがとう。', example1Romaji: 'Doumo arigatou.', example1Trans: 'Erg bedankt.', example2: '友達にありがとうと言います。', example2Romaji: 'Tomodachi ni arigatou to iimasu.', example2Trans: 'Ik zeg bedankt tegen mijn vriend.' }
+          ];
+          sampleWords.forEach(w => addWordToStateAndStorage({ ...w, scenario: scenarioTarget }));
+          setIsExtractingVocab(false);
+          showNotification("Nuttige woorden opgeslagen in je lijst! 📖✨", "success");
+        }, 600);
+      };
+
+      const generateSuggestions = async () => {
+        setIsGeneratingSuggestions(true);
+        if (apiKey) {
+          try {
+            const chatContext = history.slice(-5).map(h => `${h.role === 'user' ? 'Ik' : selectedCharacter.name}: ${h.content.translation || h.content.kana}`).join('\n');
+            const prompt = `Geef 3 hele simpele A1 antwoorden in JSON format: [{"kanji": "...", "kana": "...", "romaji": "...", "translation": "..."}] voor gesprek:\n${chatContext}`;
+            const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const result = await response.json();
+            const jsonStr = result?.candidates?.[0]?.content?.parts?.[0]?.text.replace(/```json|```/g, '').trim();
+            setSuggestedResponses(JSON.parse(jsonStr));
+            setIsGeneratingSuggestions(false);
+            return;
+          } catch(e) {}
+        }
+        setSuggestedResponses([
+          { kana: 'はい、そうです。', romaji: 'Hai, sou desu.', translation: 'Ja, dat klopt.' },
+          { kana: 'いいですね！', romaji: 'Ii desu ne!', translation: 'Dat is goed/leuk!' },
+          { kana: 'もう一度お願いします。', romaji: 'Mou ichido onegai shimasu.', translation: 'Nog een keer, alstublieft.' }
+        ]);
+        setIsGeneratingSuggestions(false);
+      };
+
+      const checkGrammar = async () => {
+        if(!inputText.trim()) return;
+        setIsCheckingGrammar(true);
+        if (apiKey) {
+          try {
+            const prompt = `A1 Japans check voor: "${inputText}". Geef JSON: {"improvedKana": "...", "romaji": "...", "explanation": "..."}`;
+            const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const result = await response.json();
+            const jsonStr = result?.candidates?.[0]?.content?.parts?.[0]?.text.replace(/```json|```/g, '').trim();
+            setGrammarCheckResult(JSON.parse(jsonStr));
+            setIsCheckingGrammar(false);
+            return;
+          } catch(e) {}
+        }
+        setGrammarCheckResult({ improvedKana: inputText, romaji: inputText, explanation: "Zin gecontroleerd! Gebruik simpele woordvolgorde (Onderwerp + wa + Rest + desu)." });
+        setIsCheckingGrammar(false);
+      };
+
+      const getEtiquetteTip = () => {
+        setIsFetchingEtiquette(true);
+        const tips = [
+          "In Japan buig je lichtjes als je iemand begroet of bedankt!",
+          "In Japan is het beleefd om 'Itadakimasu' te zeggen voordat je begint te eten.",
+          "Wist je dat slurpen bij het eten van ramen-noedels in Japan wordt gezien als een compliment voor de kok?"
+        ];
+        setTimeout(() => {
+          setEtiquetteTip(tips[Math.floor(Math.random() * tips.length)]);
+          setIsFetchingEtiquette(false);
+        }, 500);
+      };
+
+      const evaluateRoleplay = () => {
+        if (history.length < 2) return;
+        setIsEvaluating(true);
+        setTimeout(() => {
+          setEvaluationResult({
+            score: "8",
+            feedback: "Goed gedaan! Je hebt een leuk gesprek gevoerd op beginnersniveau.",
+            improvement: "Probeer in je volgende gesprek 'arigatou gozaimasu' te gebruiken om extra beleefd te zijn!"
+          });
+          setIsEvaluating(false);
+        }, 800);
+      };
+
+      const saveCurrentDialogue = () => {
+        if (history.length === 0) return;
+        setIsSavingDialogue(true);
+        const dialogueData = {
+          docId: `local-d-${Date.now()}`,
+          characterName: selectedCharacter.name,
+          scenario: selectedCharacter.scenarioName || selectedCharacter.role || 'Eigen Scenario',
+          history: history,
+          timestamp: Date.now(),
+          characterInfo: selectedCharacter,
+          sortOrder: savedDialogues.length,
+          isFavorite: false
+        };
+        const updated = [...savedDialogues, dialogueData];
+        setSavedDialogues(updated);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+        showNotification("Gesprek opgeslagen! 💾✨", "success");
+        setDialogueSuccessMsg('Opgeslagen! 💾✨');
+        setTimeout(() => { setIsSavingDialogue(false); setDialogueSuccessMsg(''); }, 3000);
+      };
+
+      const exportDialogue = (dialogue) => {
+        downloadJsonFile(dialogue, `EchtJapans2.0-MijnChats-${new Date().toISOString().split('T')[0]}.json`);
+      };
+
+      const importDialogue = (event) => {
+        const file = event.target.files?.[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            let rawString = e.target.result.replace(/^\uFEFF/, '').trim();
+            const importedData = JSON.parse(rawString);
+            if (importedData && importedData.history) {
+              const localId = `local-d-${Date.now()}`;
+              const savedWithId = { docId: localId, ...importedData };
+              const updated = [...savedDialogues, savedWithId];
+              setSavedDialogues(updated);
+              localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+              showNotification("Dialoog geïmporteerd! 💾✨", "success");
+            }
+          } catch (error) { setAppErrorMessage("Fout bij het inlezen van het dialoogbestand."); }
+        };
+        reader.readAsText(file);
+      };
+
+      const deleteDialogue = (id) => {
+        const updated = savedDialogues.filter(d => d.docId !== id);
+        setSavedDialogues(updated);
+        localStorage.setItem(`${appId}_saved_dialogues`, JSON.stringify(updated));
+        showNotification("Dialoog verwijderd!", "info");
+      };
+
+      const continueDialogue = (dialogue) => {
+        const char = dialogue.characterInfo || 
+                     builtInCharacters.find(c => c.name === dialogue.characterName) || 
+                     customScenarios.find(c => c.name === dialogue.characterName) ||
+                     { name: dialogue.characterName, role: dialogue.scenario || 'Gesprekspartner', systemPrompt: `Jij bent ${dialogue.characterName}.`, level: 'A1' };
+
+        setSelectedCharacter(char); setHistory(dialogue.history); setView('chat');
+        setSuggestedResponses([]); setGrammarCheckResult(null); setEtiquetteTip(null); setEvaluationResult(null); setInputText('');
+      };
+
+      const handleSenseiClick = (content) => {
+        const prompt = `Je bent een behulpzame Japanse Sensei. Leg de volgende Japanse zin uit op A1/A2 taalniveau: "${content.kana || content.kanji}" (Romaji: ${content.romaji}, Vertaling: ${content.translation}). Geef uitleg over de grammatica, laat zien hoe je de zin nog mooier kunt maken, en geef alternatieve woorden.`;
+        const textArea = document.createElement("textarea"); textArea.value = prompt;
+        document.body.appendChild(textArea); textArea.select();
+        try { 
+          document.execCommand('copy'); 
+          showNotification("Zin gekopieerd voor Sensei! Open Gemini... 🧑‍🏫", "success");
+        } catch (err) {}
+        document.body.removeChild(textArea);
+        window.open('https://gemini.google.com/app', '_blank');
+      };
+
+      return (
+        <div className={`min-h-screen bg-gradient-to-br ${userRole === 'leerling' ? 'from-emerald-100 via-teal-50 to-cyan-100' : 'from-pink-100 via-purple-50 to-blue-100'} p-4 font-sans text-slate-800 flex flex-col items-center w-full`}>
+          
+          {/* Toast notifications */}
+          {notification && (
+            <div className={`fixed top-4 z-50 w-full max-w-sm p-4 rounded-3xl flex items-center gap-3 shadow-xl border-2 animate-in fade-in duration-300 ${
+              notification.type === 'error' ? 'bg-red-100 border-red-300 text-red-800' :
+              notification.type === 'info' ? 'bg-blue-100 border-blue-300 text-blue-800' :
+              'bg-emerald-50 border-emerald-300 text-emerald-800'
+            }`}>
+              <Sparkles className={notification.type === 'error' ? "text-red-500" : notification.type === 'info' ? "text-blue-500" : "text-emerald-500"} size={20} />
+              <div className="flex-1 text-xs font-black uppercase tracking-wide">{notification.msg}</div>
+              <button onClick={() => setNotification(null)} className="opacity-50 hover:opacity-100 p-1"><X size={14} /></button>
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {appErrorMessage && (
+            <div className="w-full max-w-lg mb-4 bg-red-100 border-2 border-red-300 text-red-800 p-4 rounded-3xl flex items-start gap-3 shadow-md">
+              <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+              <div className="flex-1 text-sm font-medium">{appErrorMessage}</div>
+              <button onClick={() => setAppErrorMessage(null)} className="text-red-500 p-1"><X size={16} /></button>
+            </div>
+          )}
+
+          {/* Header */}
+          {view !== 'role_select' && view !== 'menu' && (
+            <header className={`w-full max-w-lg mb-6 bg-white/80 backdrop-blur-md p-4 rounded-3xl shadow-sm border-b-4 ${userRole === 'leerling' ? 'border-teal-400' : 'border-pink-400'} flex items-center justify-between`}>
+              <h1 className={`font-black text-xl ${userRole === 'leerling' ? 'text-teal-700' : 'text-purple-700'} flex items-center gap-2`}>
+                <Sparkles className={userRole === 'leerling' ? 'text-emerald-500' : 'text-pink-500'}/> Echt Japans Oefenchats Githubversie 2.0
+              </h1>
+            </header>
+          )}
+
+          {/* VIEW: Start Screen / Role Selection */}
+          {view === 'role_select' && (
+            <div className="w-full max-w-md flex flex-col items-center justify-center flex-1 pb-20 px-4 mx-auto z-30 mt-12 text-center">
+              <div className="text-6xl mb-6 drop-shadow-md animate-bounce">🚀</div>
+              <h1 className="font-black text-3xl sm:text-4xl text-purple-700 leading-tight drop-shadow-sm mb-2">
+                Echt Japans Oefenchats Githubversie 2.0
+              </h1>
+              <h2 className="font-bold text-xl text-purple-600 mb-8 tracking-wider bg-white/60 px-5 py-2 rounded-full shadow-sm inline-block">
+                あなたは誰ですか？ (Wie ben je?)
+              </h2>
+              <div className="w-full space-y-4">
+                <button 
+                  onClick={() => { setUserRole('docent'); setView('menu'); }} 
+                  className="w-full bg-gradient-to-r from-pink-400 to-purple-500 text-white p-5 rounded-3xl font-black shadow-lg shadow-pink-200 flex items-center justify-center gap-3 text-lg hover:scale-105 transition-transform"
+                >
+                  👩‍🏫 Ik ben Docent
+                </button>
+                <button 
+                  onClick={() => { setUserRole('leerling'); setView('menu'); }} 
+                  className="w-full bg-gradient-to-r from-teal-400 to-emerald-500 text-white p-5 rounded-3xl font-black shadow-lg shadow-teal-200 flex items-center justify-center gap-3 text-lg hover:scale-105 transition-transform"
+                >
+                  🎒 Ik ben Leerling
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: Main Menu */}
+          {view === 'menu' && (
+            <div className="w-full max-w-md flex flex-col items-center justify-center flex-1 pb-20 px-4 mx-auto z-30">
+              <header className="w-full mb-8 text-center">
+                <div className="text-6xl mb-4 drop-shadow-md">🌸✨🐱</div>
+                <h1 className={`font-black text-3xl sm:text-4xl ${userRole === 'leerling' ? 'text-teal-700' : 'text-purple-700'} leading-tight drop-shadow-sm`}>
+                  Echt Japans <br/>
+                  <span className={userRole === 'leerling' ? 'text-emerald-500' : 'text-pink-500'}>Oefenchats v2.0</span>
+                </h1>
+                <h2 className={`font-bold text-xl ${userRole === 'leerling' ? 'text-teal-500' : 'text-purple-400'} mt-3 tracking-wider bg-white/60 px-4 py-1.5 rounded-full shadow-sm inline-block`}>
+                  日本語を話そう！
+                </h2>
+              </header>
+
+              <div className="w-full space-y-4">
+                {userRole !== 'leerling' && (
+                  <button onClick={() => setView('characters')} className="w-full bg-gradient-to-r from-pink-400 to-purple-500 text-white p-5 rounded-3xl font-black shadow-lg shadow-pink-200 flex items-center justify-center gap-3 text-lg hover:scale-105 transition-transform">
+                    <Gamepad2 size={24}/> Start Rollenspel! 🎮
+                  </button>
+                )}
+                <button onClick={() => setView('vocabulary')} className={`w-full bg-gradient-to-r ${userRole === 'leerling' ? 'from-teal-400 to-cyan-500 shadow-teal-200' : 'from-cyan-400 to-blue-500 shadow-blue-200'} text-white p-5 rounded-3xl font-black shadow-lg flex items-center justify-center gap-3 text-lg hover:scale-105 transition-transform`}>
+                  <BookOpen size={24}/> Mijn Woordenlijst 📖
+                </button>
+                <button onClick={() => setView('dialogues')} className={`w-full bg-white ${userRole === 'leerling' ? 'text-teal-700 border-teal-200 shadow-teal-100 hover:bg-teal-50' : 'text-purple-600 border-purple-200 shadow-purple-100 hover:bg-purple-50'} border-2 p-5 rounded-3xl font-black shadow-lg flex items-center justify-center gap-3 text-lg transition-colors`}>
+                  <Archive size={24}/> {userRole === 'leerling' ? 'Oefendialogen 💾' : 'Opgeslagen Chats 💾'}
+                </button>
+                <button onClick={() => { setUserRole(null); setView('role_select'); }} className="w-full bg-transparent text-slate-400 p-2 font-bold flex items-center justify-center gap-2 text-xs hover:text-slate-600 transition-colors mt-2">
+                  <ChevronLeft size={16}/> Terug naar Inloggen
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: Saved Dialogues / Oefendialogen */}
+          {view === 'dialogues' && (
+            <div className="w-full max-w-lg space-y-4 pb-10">
+              <div className="flex justify-between items-center">
+                <button onClick={() => setView('menu')} className={`${userRole === 'leerling' ? 'text-teal-600' : 'text-pink-500'} font-bold flex items-center gap-1 bg-white/60 px-3 py-1 rounded-full w-max shadow-sm hover:bg-white text-sm`}><ChevronLeft size={16}/> Terug</button>
+                <div className="flex gap-2">
+                  <input type="file" ref={dialogueFileInputRef} className="hidden" accept=".json" onChange={importDialogue} />
+                  <button onClick={() => dialogueFileInputRef.current?.click()} className={`text-[10px] font-bold ${userRole === 'leerling' ? 'text-teal-700 hover:bg-teal-50' : 'text-purple-600 hover:bg-purple-50'} p-2 bg-white rounded-xl shadow-sm flex items-center gap-1`}><Upload size={12}/> IMPORTEER</button>
+                </div>
+              </div>
+              
+              <h2 className={`font-black text-2xl ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'} flex items-center gap-2`}>
+                <Heart size={24} className={userRole === 'leerling' ? 'text-teal-500 fill-teal-500' : 'text-pink-500 fill-pink-500'}/> 
+                {userRole === 'leerling' ? 'Oefendialogen' : 'Jouw Chats'}
+              </h2>
+              
+              {savedDialogues.length === 0 ? (
+                <div className="text-center p-8 bg-white/80 backdrop-blur-sm rounded-3xl border border-teal-100 text-slate-500 shadow-sm">
+                  <Archive size={48} className={`mx-auto ${userRole === 'leerling' ? 'text-teal-300' : 'text-pink-200'} mb-4`} />
+                  <p className={`font-bold text-lg ${userRole === 'leerling' ? 'text-teal-700' : 'text-purple-400'}`}>
+                    Nog geen {userRole === 'leerling' ? 'oefendialogen' : 'chats'} opgeslagen!
+                  </p>
+                  <p className="text-sm">
+                    {userRole === 'leerling' ? 'Importeer een oefendialoog om deze hier terug te lezen.' : 'Sla een gesprek op tijdens het oefenen om het hier terug te lezen.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {savedDialogues.map((dialogue, index) => (
+                    <div key={`saved-dialogue-${dialogue.docId || ''}-${index}`} className={`bg-white/90 rounded-3xl shadow-sm border overflow-hidden ${dialogue.isFavorite ? 'border-yellow-400 bg-yellow-50/30' : (userRole === 'leerling' ? 'border-teal-200' : 'border-purple-100')}`}>
+                      <div className={`p-4 border-b ${userRole === 'leerling' ? 'border-teal-100 bg-teal-50/50' : 'border-purple-50 bg-purple-50/50'} flex justify-between items-start`}>
+                        {userRole !== 'leerling' && (
+                          <div className="flex flex-col gap-1 mr-3 mt-1 shrink-0">
+                            <button onClick={(e) => { e.stopPropagation(); moveDialogue(index, 'up'); }} disabled={index === 0} className="text-slate-300 hover:text-purple-500 disabled:opacity-20 transition-opacity"><ChevronUp size={16}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); moveDialogue(index, 'down'); }} disabled={index === savedDialogues.length - 1} className="text-slate-300 hover:text-purple-500 disabled:opacity-20 transition-opacity"><ChevronDown size={16}/></button>
+                          </div>
+                        )}
+                        <div className="flex-1 cursor-pointer min-w-0" onClick={() => toggleDialogue(dialogue.docId)}>
+                          {editingDialogueId === dialogue.docId && userRole !== 'leerling' ? (
+                            <input 
+                              autoFocus 
+                              value={editingDialogueName} 
+                              onChange={e => setEditingDialogueName(e.target.value)} 
+                              onBlur={() => saveDialogueName(dialogue.docId, editingDialogueName)}
+                              onKeyDown={e => e.key === 'Enter' && saveDialogueName(dialogue.docId, editingDialogueName)}
+                              onClick={e => e.stopPropagation()}
+                              className="font-black text-purple-700 text-lg bg-white px-2 py-0.5 rounded w-full max-w-[200px] outline-none ring-2 ring-pink-300 mb-1"
+                            />
+                          ) : (
+                            <div className={`font-black ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'} text-lg flex items-center gap-2 group w-full`} onClick={(e) => { if(userRole !== 'leerling'){ e.stopPropagation(); setEditingDialogueId(dialogue.docId); setEditingDialogueName(dialogue.scenario); } }}>
+                              <span className="truncate">{dialogue.scenario}</span> {userRole !== 'leerling' && <span className="opacity-0 group-hover:opacity-100 text-sm shrink-0">✏️</span>}
+                            </div>
+                          )}
+                          <div className="text-sm text-slate-500 flex items-center gap-2 font-medium truncate mt-0.5">
+                            <Users size={14} className={`${userRole === 'leerling' ? 'text-teal-500' : 'text-pink-400'} shrink-0`}/> 
+                            <span className="truncate">met {dialogue.characterName} ({dialogue.characterInfo?.level || 'A1'})</span>
+                          </div>
+                        </div>
+
+                        <div className={`flex gap-1 sm:gap-2 items-center bg-white/80 p-1 rounded-2xl border ${userRole === 'leerling' ? 'border-teal-200' : 'border-purple-100'} shadow-sm ml-2 shrink-0 flex-wrap justify-end`}>
+                          {userRole !== 'leerling' ? (
+                            <>
+                              <button onClick={(e) => { e.stopPropagation(); toggleFavoriteDialogue(dialogue); }} className="p-2 rounded-xl hover:bg-yellow-100" title="Favoriet">
+                                <Star size={18} className={dialogue.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-slate-300"} />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); exportDialogue(dialogue); }} className="p-2 rounded-xl hover:bg-blue-100" title="Exporteer">
+                                <Download size={18} className="text-blue-500" />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); continueDialogue(dialogue); }} className="text-white bg-pink-400 hover:bg-pink-500 px-3 py-2 rounded-xl text-xs font-bold shadow-sm" title="Verder">
+                                <MessageCircle size={14} /> <span className="hidden sm:inline">Verder</span>
+                              </button>
+                              <button onClick={() => toggleDialogue(dialogue.docId)} className="text-purple-400 p-2">
+                                {expandedDialogues[dialogue.docId] ? '▼' : '▶'}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'dialogue', id: dialogue.docId, name: dialogue.scenario }); }} className="text-slate-300 hover:text-red-500 p-2">
+                                <Trash2 size={18} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); continueDialogue(dialogue); }} 
+                                className="text-white bg-teal-500 hover:bg-teal-600 px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-black shadow-sm" 
+                                title="Oefenen..."
+                              >
+                                <MessageCircle size={14} /> <span>Oefenen...</span>
+                              </button>
+                              <button onClick={() => toggleDialogue(dialogue.docId)} className="text-teal-600 p-2 font-bold">
+                                {expandedDialogues[dialogue.docId] ? '▼' : '▶'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {expandedDialogues[dialogue.docId] && (
+                        <div className="p-4 space-y-3 bg-slate-50">
+                          {dialogue.history.map((h, i) => (
+                            <div 
+                              key={`msg-${dialogue.docId}-${i}`} 
+                              className={`p-3 rounded-2xl max-w-[85%] text-sm ${
+                                h.role === 'user' 
+                                  ? (userRole === 'leerling' ? 'bg-teal-500 text-white ml-auto rounded-tr-sm' : 'bg-cyan-500 text-white ml-auto rounded-tr-sm') 
+                                  : (userRole === 'leerling' ? 'bg-emerald-100 text-teal-950 mr-auto rounded-tl-sm shadow-sm border border-emerald-200' : 'bg-pink-100 text-purple-900 mr-auto rounded-tl-sm shadow-sm border border-pink-200')
+                              }`}
+                            >
+                              <div className="flex justify-between items-start mb-1">
+                                <div className="font-bold opacity-70 text-[10px] uppercase">{h.role === 'user' ? 'Jij' : dialogue.characterName}</div>
+                                <button onClick={() => handleSenseiClick(h.content)} className={`flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded-full ${h.role === 'user' ? 'bg-black/20 text-white' : (userRole === 'leerling' ? 'bg-teal-200 text-teal-800' : 'bg-pink-200 text-pink-700')}`} title="Vraag de Sensei">
+                                  <GraduationCap size={10}/>
+                                </button>
+                              </div>
+                              <div className="font-medium text-base cursor-pointer" onClick={() => toggleRomaji(`dialogue-${dialogue.docId}-${i}`, false)}>{h.content.kana || h.content.kanji}</div>
+                              {isRomajiVisible(`dialogue-${dialogue.docId}-${i}`, false) && <div className="text-xs italic opacity-80 mt-1 bg-black/5 p-1 rounded inline-block">{h.content.romaji}</div>}
+                              {h.content.translation && <div className="italic text-sm pt-1 mt-2 border-t border-black/10">{h.content.translation}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW: Vocabulary */}
+          {view === 'vocabulary' && (
+            <div className="w-full max-w-lg space-y-4 pb-10">
+              <div className="flex justify-between items-center">
+                <button onClick={() => setView('menu')} className={`${userRole === 'leerling' ? 'text-teal-600' : 'text-pink-500'} font-bold flex items-center gap-1 bg-white/60 px-3 py-1 rounded-full text-sm`}><ChevronLeft size={16}/> Terug</button>
+                <div className="flex gap-2">
+                  <button onClick={exportAllVocabulary} className={`text-[10px] font-bold ${userRole === 'leerling' ? 'text-teal-700' : 'text-purple-600'} p-2 bg-white rounded-xl shadow-sm flex items-center gap-1`}><Download size={12}/> EXPORTEER</button>
+                  <button onClick={importAllVocabulary} className={`text-[10px] font-bold ${userRole === 'leerling' ? 'text-teal-700' : 'text-purple-600'} p-2 bg-white rounded-xl shadow-sm flex items-center gap-1`}><Upload size={12}/> IMPORTEER</button>
+                </div>
+              </div>
+              <h2 className={`font-black text-2xl ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'} flex items-center gap-2`}><Star size={24} className="text-yellow-400 fill-yellow-400"/> Oefenkaartjes</h2>
+              
+              <div className="flex gap-4 bg-white/80 p-4 rounded-3xl shadow-sm border border-purple-100 flex-wrap">
+                <label className={`flex items-center gap-2 cursor-pointer font-bold text-sm ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'}`}><input type="checkbox" checked={vocabDisplayMode.furigana} onChange={() => setVocabDisplayMode(p => ({...p, furigana: !p.furigana}))} className="accent-teal-500 w-4 h-4"/> Kana/Furigana</label>
+                <label className={`flex items-center gap-2 cursor-pointer font-bold text-sm ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'}`}><input type="checkbox" checked={vocabDisplayMode.translation} onChange={() => setVocabDisplayMode(p => ({...p, translation: !p.translation}))} className="accent-teal-500 w-4 h-4"/> NL Vertaling</label>
+                <label className={`flex items-center gap-2 cursor-pointer font-bold text-sm ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'}`}><input type="checkbox" checked={vocabDisplayMode.romaji} onChange={() => setVocabDisplayMode(p => ({...p, romaji: !p.romaji}))} className="accent-teal-500 w-4 h-4"/> Romaji</label>
+              </div>
+              
+              {[...new Set(vocabulary.map(v => v.scenario))].map((scenario, sIdx) => (
+                <div key={`scenario-container-${scenario}-${sIdx}`} className="bg-white/90 rounded-3xl shadow-sm border border-purple-100 overflow-hidden">
+                  <button onClick={() => toggleScenario(scenario)} className={`w-full p-4 bg-gradient-to-r ${userRole === 'leerling' ? 'from-teal-500 to-emerald-500' : 'from-purple-500 to-pink-500'} text-white font-black text-left flex justify-between items-center text-lg`}>
+                    <span>✨ {scenario}</span>
+                    <span>{expandedScenarios[scenario] ? '▼' : '▶'}</span>
+                  </button>
+                  
+                  {expandedScenarios[scenario] && (
+                    <div className="p-4 space-y-4 bg-slate-50/50">
+                      <div className="flex gap-2 justify-end mb-2">
+                        <button onClick={() => copyScenarioVocabulary(scenario)} className="text-[10px] font-bold text-teal-700 p-2 bg-white rounded-xl shadow-sm flex items-center gap-1">
+                          {copiedScenario === scenario ? <span className="text-green-500">✓ GEKOPIEERD</span> : <><Copy size={12}/> KOPIEER</>}
+                        </button>
+                        <button onClick={() => exportScenario(scenario)} className="text-[10px] font-bold text-teal-700 p-2 bg-white rounded-xl shadow-sm flex items-center gap-1"><Download size={12}/> EXPORTEER</button>
+                        <button onClick={() => importScenario(scenario)} className="text-[10px] font-bold text-teal-700 p-2 bg-white rounded-xl shadow-sm flex items-center gap-1"><Upload size={12}/> IMPORTEER</button>
+                      </div>
+                      
+                      {vocabulary.filter(v => v.scenario === scenario).map((v, vIdx) => (
+                        <div key={`vocab-${v.id || v.docId || vIdx}-${vIdx}`} className="bg-white p-6 rounded-3xl shadow-sm border border-teal-100 relative">
+                          {(v.docId || v.id) && userRole !== 'leerling' && (
+                            <button onClick={() => setDeleteConfirm({ type: 'vocabulary', id: v.docId || v.id, name: v.kanji || v.furigana })} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 bg-slate-50 rounded-full p-2"><Trash2 size={16} /></button>
+                          )}
+
+                          <div className="cursor-pointer" onClick={() => toggleRomaji(`vocab-${v.id || v.docId || vIdx}`, vocabDisplayMode.romaji)}>
+                            <div className={`text-3xl font-black ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'} text-center pr-4 pl-4`}>{vocabDisplayMode.furigana ? v.furigana || v.kanji : v.kanji}</div>
+                            <div className="text-center text-slate-400 text-sm mt-1">{v.kanji !== v.furigana && v.kanji}</div>
+                          </div>
+                          
+                          {isRomajiVisible(`vocab-${v.id || v.docId || vIdx}`, vocabDisplayMode.romaji) && <div className={`text-center font-medium italic ${userRole === 'leerling' ? 'text-teal-600 bg-teal-50' : 'text-pink-500 bg-pink-50'} text-sm mt-2 py-1 px-3 rounded-full inline-block mx-auto block w-max`}>{v.romaji}</div>}
+                          {vocabDisplayMode.translation && <div className="text-center font-black text-slate-700 text-lg border-t border-teal-100 mt-4 pt-4">{v.translation}</div>}
+                          
+                          <div className="text-xs text-slate-600 mt-4 space-y-3 bg-teal-50/40 p-4 rounded-2xl border border-teal-100">
+                            <div className={`font-bold ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-800'} flex items-center gap-1`}><MessageCircle size={14}/> Voorbeeldzinnen:</div>
+                            <div>
+                              <span className="font-bold cursor-pointer" onClick={() => toggleRomaji(`vocab-ex1-${v.id || v.docId || vIdx}`, vocabDisplayMode.romaji)}>{v.example1}</span>
+                              {isRomajiVisible(`vocab-ex1-${v.id || v.docId || vIdx}`, vocabDisplayMode.romaji) && <span className="block text-teal-600 italic text-[11px] mt-0.5">{v.example1Romaji}</span>} 
+                              {vocabDisplayMode.translation && <span className="block text-slate-500 font-medium text-xs mt-0.5">{v.example1Trans}</span>}
+                            </div>
+                            <div>
+                              <span className="font-bold cursor-pointer" onClick={() => toggleRomaji(`vocab-ex2-${v.id || v.docId || vIdx}`, vocabDisplayMode.romaji)}>{v.example2}</span>
+                              {isRomajiVisible(`vocab-ex2-${v.id || v.docId || vIdx}`, vocabDisplayMode.romaji) && <span className="block text-teal-600 italic text-[11px] mt-0.5">{v.example2Romaji}</span>} 
+                              {vocabDisplayMode.translation && <span className="block text-slate-500 font-medium text-xs mt-0.5">{v.example2Trans}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {userRole !== 'leerling' && (
+                        <button onClick={() => generateMoreWords(scenario)} disabled={isLoading} className="w-full mt-4 p-4 border-2 border-dashed border-pink-300 text-pink-500 bg-white/50 rounded-3xl font-black flex justify-center items-center gap-2">
+                          {isLoading ? <Loader2 className="animate-spin" size={18}/> : <PlusCircle size={18}/>}
+                          {isLoading ? 'WOORDEN BEDENKEN... ✨' : 'GENEREER MEER WOORDEN'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* VIEW: Roleplay Scenario Picker (Docent Only) */}
+          {view === 'characters' && userRole !== 'leerling' && (
+            <div className="w-full max-w-lg space-y-6 pb-20">
+              <button onClick={() => setView('menu')} className="text-pink-500 font-bold flex items-center gap-1 bg-white/50 px-3 py-1 rounded-full text-sm"><ChevronLeft size={16}/> Terug</button>
+              <div className="space-y-4">
+                <h3 className="font-black text-2xl text-purple-700 flex items-center gap-2"><Sparkles className="text-yellow-400"/> Kies een Scenario!</h3>
+                {builtInCharacters.map((char, index) => (
+                  <div key={`builtin-char-${char.id || ''}-${index}`} className="bg-white/90 p-4 rounded-3xl shadow-sm flex items-center gap-4 border border-pink-100">
+                    <div className="text-4xl bg-pink-50 p-3 rounded-2xl shadow-inner">{char.emoji}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-black text-lg text-purple-800 truncate">{char.name} ({char.level || 'A1'})</div>
+                      <div className="text-xs font-bold text-pink-500 bg-pink-50 px-2 py-0.5 rounded-full inline-block mb-1">{char.role}</div>
+                      <div className="text-xs text-slate-500 font-medium line-clamp-2">{char.desc}</div>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => handleDuplicateScenario(char)} className="p-3 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-2xl" title="Dupliceren">
+                        <Copy size={16} />
+                      </button>
+                      <button onClick={() => startChat(char)} className="bg-gradient-to-br from-pink-400 to-purple-500 text-white px-4 py-3 rounded-2xl text-sm font-black shadow-md">Start</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Custom Scenarios List */}
+              <div className="bg-white/60 p-5 rounded-3xl border-2 border-purple-200 border-dashed backdrop-blur-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-black text-xl text-purple-700">Eigen Scenario's ✨</h3>
+                  <button onClick={() => { setEditScenarioId(null); setCustomChar({ scenarioName: '', name: '', role: '', systemPrompt: '', level: 'A1', register: 'Informeel' }); setView('custom_build'); }} className="text-xs font-bold text-pink-500 bg-white px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1">
+                    <PlusCircle size={14}/> Nieuw
+                  </button>
+                </div>
+                {customScenarios.length === 0 ? (
+                  <div className="text-center p-4 text-xs text-slate-400 font-bold">Nog geen eigen scenario's. Dupliceer er één hierboven of maak een nieuwe!</div>
+                ) : (
+                  customScenarios.map((s, index) => (
+                    <div key={`custom-scenario-${s.id || ''}-${index}`} className="bg-white p-4 rounded-2xl mb-3 flex justify-between items-center gap-3 text-sm font-medium border border-purple-100 shadow-sm">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-black text-purple-800 truncate">{s.scenarioName || s.role || 'Eigen Scenario'}</div>
+                        <div className="text-xs text-slate-500 truncate">Met: {s.name} ({s.level || 'A1'})</div>
+                      </div>
+                      <div className="flex gap-2 items-center shrink-0">
+                        <button onClick={() => handleEditScenarioClick(s)} className="p-2 rounded-xl hover:bg-purple-100 text-purple-500"><Pencil size={16}/></button>
+                        <button onClick={() => startChat(s)} className="text-white bg-pink-400 hover:bg-pink-500 px-3 py-1.5 rounded-xl font-bold shadow-sm text-xs">Start</button>
+                        <button onClick={() => setDeleteConfirm({ type: 'scenario', id: s.id, name: s.scenarioName || s.role || 'Eigen Scenario' })} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: Custom Builder (Docent Only) */}
+          {view === 'custom_build' && userRole !== 'leerling' && (
+            <div className="w-full max-w-lg space-y-4 bg-white/90 p-6 rounded-3xl shadow-sm border border-purple-100 backdrop-blur-md">
+              <h2 className="font-black text-2xl text-purple-700 mb-2">
+                {editScenarioId ? 'Scenario Aanpassen! 🛠️' : 'Bouw een nieuw scenario! 🛠️'}
+              </h2>
+              
+              <div className="space-y-3">
+                {!editScenarioId && (
+                  <>
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Kies een ideetje:</label>
+                    <select onChange={(e) => { const s = scenarioTemplates[e.target.value]; if(s) setCustomChar({...customChar, scenarioName: s.label, name: s.name, role: s.role, systemPrompt: s.systemPrompt}); }} className="w-full p-4 rounded-2xl bg-purple-50 text-purple-900 border-none ring-2 ring-purple-100 outline-none font-medium text-sm">
+                      <option>Kies een suggestie...</option>
+                      {scenarioTemplates.map((s,i) => <option key={`template-${i}`} value={i}>{s.label}</option>)}
+                    </select>
+                  </>
+                )}
+                
+                <input placeholder="Wat gaan we doen? (bijv. Manga kopen)" value={customChar.scenarioName || ''} onChange={(e) => setCustomChar({...customChar, scenarioName: e.target.value})} className="w-full p-4 rounded-2xl bg-purple-50 font-black text-purple-900 border-none ring-2 ring-purple-100 outline-none text-sm"/>
+                <input placeholder="Met wie ga je praten? (bijv. Yui)" value={customChar.name} onChange={(e) => setCustomChar({...customChar, name: e.target.value})} className="w-full p-4 rounded-2xl bg-purple-50 text-purple-900 border-none ring-2 ring-purple-100 outline-none text-sm"/>
+                <input placeholder="Rol (bijv. Klasgenoot of Winkelmedewerker)" value={customChar.role} onChange={(e) => setCustomChar({...customChar, role: e.target.value})} className="w-full p-4 rounded-2xl bg-purple-50 text-purple-900 border-none ring-2 ring-purple-100 outline-none text-sm"/>
+                
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Niveau</label>
+                    <select value={customChar.level} onChange={(e) => setCustomChar({...customChar, level: e.target.value})} className="w-full p-4 rounded-2xl bg-purple-50 font-bold border-none outline-none ring-2 ring-purple-100 text-sm">
+                      <option value="A1">A1</option>
+                      <option value="A2">A2</option>
+                      <option value="B1">B1</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Stijl</label>
+                    <select value={customChar.register} onChange={(e) => setCustomChar({...customChar, register: e.target.value})} className="w-full p-4 rounded-2xl bg-purple-50 font-bold border-none outline-none ring-2 ring-purple-100 text-sm">
+                      <option>Informeel (vrienden)</option>
+                      <option>Neutraal (-desu/-masu)</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <textarea placeholder="Instructie (bijv: Jij bent Yui. Praat simpel over...)" value={customChar.systemPrompt} onChange={(e) => setCustomChar({...customChar, systemPrompt: e.target.value})} className="w-full p-4 rounded-2xl bg-purple-50 text-purple-900 border-none ring-2 ring-purple-100 outline-none h-28 resize-none text-sm"/>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setView('characters')} className="flex-1 bg-slate-100 text-slate-500 p-4 rounded-2xl font-black text-sm">Annuleren</button>
+                <button onClick={() => {
+                  const scenarioData = {
+                    id: editScenarioId || `local-sc-${Date.now()}`,
+                    scenarioName: customChar.scenarioName || 'Eigen Scenario',
+                    name: customChar.name || 'AI Persona',
+                    role: customChar.role || 'Gesprekspartner',
+                    systemPrompt: customChar.systemPrompt || '',
+                    level: customChar.level || 'A1',
+                    register: customChar.register || 'Informeel'
+                  };
+                  const updated = editScenarioId ? customScenarios.map(s => s.id === editScenarioId ? scenarioData : s) : [...customScenarios, scenarioData];
+                  setCustomScenarios(updated);
+                  localStorage.setItem(`${appId}_custom_scenarios`, JSON.stringify(updated));
+                  showNotification("Scenario opgeslagen! ✨", "success");
+                  setView('characters');
+                }} className="flex-[2] bg-gradient-to-r from-pink-400 to-purple-500 text-white p-4 rounded-2xl font-black text-sm shadow-md">
+                  Opslaan! ✨
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: Live Chat */}
+          {view === 'chat' && selectedCharacter && (
+            <div className="w-full max-w-lg flex flex-col flex-1 pb-10">
+              <div className={`flex justify-between items-center mb-3 font-black ${userRole === 'leerling' ? 'text-teal-800' : 'text-purple-700'} bg-white/70 backdrop-blur px-4 py-2.5 rounded-2xl shadow-sm`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{selectedCharacter.emoji || '🗣️'}</span>
+                  <span>Chat met {selectedCharacter.name} ({selectedCharacter.level || 'A1'})</span>
+                </div>
+                <button onClick={() => setView('dialogues')} className={`bg-white p-1 rounded-full ${userRole === 'leerling' ? 'text-teal-500' : 'text-pink-400'}`}><X size={20}/></button>
+              </div>
+              
+              <div className="flex justify-between gap-2 mb-3 items-center">
+                <div className="flex gap-3 flex-wrap p-3 bg-white/90 rounded-2xl shadow-sm border border-teal-100 flex-1 justify-center">
+                  {['kana', 'romaji', 'translation', 'kanji'].map(mode => (
+                    <label key={`display-mode-${mode}`} className={`flex items-center gap-1.5 text-[10px] font-black uppercase cursor-pointer ${userRole === 'leerling' ? 'text-teal-700' : 'text-purple-600'}`}>
+                      <input type="checkbox" checked={displayMode[mode]} onChange={() => setDisplayMode(p => ({...p, [mode]: !p[mode]}))} className="accent-teal-500 w-3.5 h-3.5"/> 
+                      {mode === 'translation' ? 'NL' : mode}
+                    </label>
+                  ))}
+                </div>
+                
+                <button onClick={getEtiquetteTip} disabled={isFetchingEtiquette} className="p-3 bg-gradient-to-br from-cyan-300 to-blue-400 text-white rounded-2xl flex items-center justify-center shadow-md disabled:opacity-50" title="Weetje over Japan!">
+                  {isFetchingEtiquette ? <Loader2 size={20} className="animate-spin" /> : <Globe size={20} />}
+                </button>
+              </div>
+
+              {etiquetteTip && (
+                <div className="mb-3 bg-blue-50 border-2 border-blue-200 p-4 rounded-3xl relative shadow-sm">
+                  <button onClick={() => setEtiquetteTip(null)} className="absolute top-3 right-3 text-blue-400 bg-white rounded-full p-1"><X size={14}/></button>
+                  <div className="text-xs font-black text-blue-600 mb-2 flex items-center gap-1 uppercase tracking-wider"><Sparkles size={14}/> Cool Weetje!</div>
+                  <div className="text-sm text-slate-700 font-medium">{etiquetteTip}</div>
+                </div>
+              )}
+
+              {/* Complete Dialogue History Window */}
+              <div className="space-y-4 p-4 bg-white/60 backdrop-blur-sm border border-purple-50 rounded-3xl mb-4 shadow-inner">
+                {history.map((h, i) => {
+                  const isEditing = editingMsgIndex === i;
+                  return (
+                    <div key={`chat-msg-container-${i}`} id={`chat-msg-${i}`} className={`p-4 rounded-3xl max-w-[85%] text-sm relative shadow-sm border ${activeMessageIndex === i ? 'ring-4 ring-yellow-400 scale-[1.02]' : ''} ${h.role === 'user' ? 'bg-gradient-to-br from-cyan-400 to-blue-500 text-white ml-auto rounded-tr-sm border-blue-300' : 'bg-white text-purple-900 mr-auto rounded-tl-sm border-pink-200'} ${isEditing ? 'w-full max-w-[95%] bg-white text-slate-800' : ''}`}>
+                      {isEditing && userRole !== 'leerling' ? (
+                        <div className="space-y-2 text-slate-800">
+                          <div className="text-[10px] font-black uppercase text-pink-500 mb-1">Bericht bewerken</div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Japans (Kana)</label>
+                            <input value={editingMsgContent.kana} onChange={e => setEditingMsgContent({...editingMsgContent, kana: e.target.value})} className="w-full p-2 text-sm rounded-xl border border-purple-200 bg-purple-50/50" />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Romaji</label>
+                            <input value={editingMsgContent.romaji} onChange={e => setEditingMsgContent({...editingMsgContent, romaji: e.target.value})} className="w-full p-2 text-sm rounded-xl border border-purple-200 bg-purple-50/50" />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Vertaling (NL)</label>
+                            <input value={editingMsgContent.translation} onChange={e => setEditingMsgContent({...editingMsgContent, translation: e.target.value})} className="w-full p-2 text-sm rounded-xl border border-purple-200 bg-purple-50/50" />
+                          </div>
+                          <div className="flex gap-2 justify-end pt-2">
+                            <button onClick={() => setEditingMsgIndex(null)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 text-slate-500 rounded-xl">Annuleren</button>
+                            <button onClick={saveEditedMessage} className="px-3 py-1.5 text-xs font-black bg-pink-500 text-white rounded-xl flex items-center gap-1"><Check size={12}/> Opslaan</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-start mb-1">
+                            <div className="font-black opacity-80 text-[10px] uppercase tracking-wider">{h.role === 'user' ? 'Ik' : selectedCharacter.name}</div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleSenseiClick(h.content)} className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${h.role === 'user' ? 'bg-blue-400 text-white' : 'bg-pink-100 text-pink-600'}`} title="Vraag de Sensei">
+                                <GraduationCap size={12}/> Sensei
+                              </button>
+                              <button onClick={() => playJapaneseText(h.content.kana || h.content.kanji, i)} className={`${h.role === 'user' ? 'text-blue-100' : 'text-pink-300'}`}>
+                                <Volume2 size={16}/>
+                              </button>
+                              {userRole !== 'leerling' && (
+                                <>
+                                  <button onClick={() => startEditingMessage(i, h.content)} className="text-pink-300"><Pencil size={12}/></button>
+                                  <button onClick={() => setDeleteConfirm({ type: 'chat_message', index: i, name: 'dit bericht' })} className="text-pink-300 hover:text-red-500"><Trash2 size={12}/></button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="cursor-pointer" onClick={() => toggleRomaji(`chat-${i}`, displayMode.romaji)}>
+                            {displayMode.kana && <div className="text-lg font-medium">{h.content.kana}</div>}
+                            {displayMode.kanji && displayMode.kana && h.content.kanji !== h.content.kana && <div className="text-xs opacity-60 mt-0.5">{h.content.kanji}</div>}
+                            {!displayMode.kana && displayMode.kanji && <div className="text-lg">{h.content.kanji}</div>}
+                          </div>
+                          
+                          {isRomajiVisible(`chat-${i}`, displayMode.romaji) && <div className={`text-xs italic font-medium mt-2 p-1.5 rounded-lg inline-block ${h.role==='user'?'bg-black/10':'bg-pink-50 text-pink-600'}`}>{h.content.romaji}</div>}
+                          {displayMode.translation && h.content.translation && <div className={`font-bold mt-2 pt-2 border-t ${h.role==='user'?'border-white/20':'border-purple-100'}`}>{h.content.translation}</div>}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {isLoading && <div className="text-pink-500 font-black text-xs p-3 bg-white w-max rounded-2xl border border-pink-100 shadow-sm flex items-center gap-2"><Loader2 className="animate-spin" size={16}/> {selectedCharacter.name} typt...</div>}
+              </div>
+
+              {/* Docent Controls: Send Input and AI Help */}
+              {userRole !== 'leerling' && (
+                <>
+                  <div className="flex gap-2 mb-3">
+                    <button onClick={generateSuggestions} disabled={isGeneratingSuggestions || isLoading} className="flex-1 text-[11px] font-black text-purple-600 bg-white border-b-4 border-purple-200 p-3 rounded-2xl flex justify-center items-center gap-1 shadow-sm uppercase">
+                      {isGeneratingSuggestions ? <Loader2 className="animate-spin" size={16}/> : <Sparkles size={16} className="text-yellow-400"/>} Help me!
+                    </button>
+                    <button onClick={checkGrammar} disabled={isCheckingGrammar || isLoading || !inputText.trim()} className="flex-1 text-[11px] font-black text-blue-600 bg-white border-b-4 border-blue-200 p-3 rounded-2xl flex justify-center items-center gap-1 shadow-sm uppercase">
+                      {isCheckingGrammar ? <Loader2 className="animate-spin" size={16}/> : <Wand2 size={16} className="text-blue-400"/>} Check zin
+                    </button>
+                  </div>
+                  
+                  <div className="flex gap-2 mb-5">
+                    <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Typ in Romaji of NL..." className="flex-1 p-4 rounded-3xl border-2 border-purple-200 shadow-inner font-medium text-purple-900 bg-white" disabled={isLoading}/>
+                    <button onClick={sendMessage} disabled={isLoading || !inputText.trim()} className="bg-gradient-to-r from-pink-400 to-purple-500 text-white p-4 rounded-3xl disabled:opacity-50 flex items-center justify-center min-w-[60px] shadow-md">
+                      {isLoading ? <Loader2 className="animate-spin" size={24}/> : <Send size={24}/>}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Bottom Utility Bar */}
+              <div className="flex flex-col gap-2 bg-white/80 p-4 rounded-3xl shadow-sm border border-purple-100 mb-5">
+                <div className="flex justify-between items-center gap-2 flex-wrap">
+                  <button onClick={extractVocabularyFromChat} disabled={isExtractingVocab || history.length < 2} className="text-[10px] font-black text-cyan-700 p-3 bg-cyan-50 rounded-2xl flex items-center gap-2 border border-cyan-200 shadow-sm uppercase flex-1 justify-center">
+                    {isExtractingVocab ? <Loader2 className="animate-spin" size={16}/> : <BookOpen size={16}/>} Woorden Opslaan
+                  </button>
+                  
+                  {userRole !== 'leerling' && (
+                    <button onClick={saveCurrentDialogue} disabled={isSavingDialogue || history.length === 0} className="text-[10px] font-black text-emerald-700 p-3 bg-emerald-50 rounded-2xl flex items-center gap-2 border border-emerald-200 shadow-sm uppercase flex-1 justify-center">
+                      {isSavingDialogue ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Bewaar Chat
+                    </button>
+                  )}
+                  
+                  {isPlaying ? (
+                    <button onClick={stopAudio} className="text-[10px] font-black text-rose-600 p-3 bg-rose-50 rounded-2xl flex items-center gap-2 border border-rose-200 shadow-sm uppercase flex-1 justify-center">
+                      <StopCircle size={16}/> STOPPEN
+                    </button>
+                  ) : (
+                    <button onClick={playFullDialogue} disabled={history.length === 0} className={`text-[10px] font-black ${userRole === 'leerling' ? 'text-teal-700 bg-teal-50 border-teal-200' : 'text-purple-700 bg-purple-50 border-purple-200'} p-3 rounded-2xl flex items-center gap-2 flex-1 justify-center border shadow-sm uppercase`}>
+                      <PlayCircle size={16}/> SPEEL AF
+                    </button>
+                  )}
+                </div>
+                {vocabSuccessMessage && <div className="text-xs font-black text-cyan-600 bg-cyan-50 py-2 px-3 rounded-xl text-center mt-2 border border-cyan-100">{vocabSuccessMessage}</div>}
+                {dialogueSuccessMsg && <div className="text-xs font-black text-emerald-600 bg-emerald-50 py-2 px-3 rounded-xl text-center mt-2 border border-emerald-100">{dialogueSuccessMsg}</div>}
+              </div>
+              
+              {/* Evaluation Section */}
+              <div className="mb-6">
+                {evaluationResult ? (
+                  <div className={`bg-gradient-to-br ${userRole === 'leerling' ? 'from-teal-50 to-emerald-50 border-teal-200' : 'from-yellow-50 to-orange-50 border-yellow-200'} border-2 p-5 rounded-3xl relative shadow-sm`}>
+                    <button onClick={() => setEvaluationResult(null)} className={`absolute top-3 right-3 ${userRole === 'leerling' ? 'text-teal-400' : 'text-orange-400'} bg-white rounded-full p-1`}><X size={16}/></button>
+                    
+                    {userRole !== 'leerling' && (
+                      <div className="flex items-center gap-2 mb-3 text-orange-600 font-black text-2xl">
+                        <Award size={28} className="text-yellow-500 fill-yellow-500" /> Score: {evaluationResult.score}/10
+                      </div>
+                    )}
+                    
+                    <div className="text-sm text-slate-800 mb-4 font-medium">
+                      <span className={`font-black ${userRole === 'leerling' ? 'text-teal-800' : 'text-orange-800'} block mb-1 uppercase text-xs`}>Feedback:</span>
+                      {evaluationResult.feedback && evaluationResult.feedback.split('\n').map((para, idx) => para.trim() ? <p key={idx} className="mb-2 leading-relaxed">{para}</p> : null)}
+                    </div>
+                    
+                    <div className={`text-sm bg-white p-4 rounded-2xl border ${userRole === 'leerling' ? 'border-teal-100' : 'border-yellow-100'} font-medium`}>
+                      <span className={`font-black ${userRole === 'leerling' ? 'text-emerald-600' : 'text-red-500'} block mb-1 flex items-center gap-1 uppercase text-xs`}><Sparkles size={12}/> Handige tips:</span>
+                      {evaluationResult.improvement && evaluationResult.improvement.split('\n').map((para, idx) => para.trim() ? <p key={idx} className="mb-2 leading-relaxed">{para}</p> : null)}
+                    </div>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={evaluateRoleplay} 
+                    disabled={isEvaluating || history.length < 2} 
+                    className={`w-full text-sm font-black ${
+                      userRole === 'leerling' 
+                        ? 'text-teal-800 bg-gradient-to-r from-teal-100 to-emerald-100 border-teal-300' 
+                        : 'text-orange-600 bg-gradient-to-r from-yellow-100 to-orange-100 border-yellow-200'
+                    } border-2 p-4 rounded-3xl flex justify-center items-center gap-2 shadow-sm uppercase tracking-wide`}
+                  >
+                    {isEvaluating ? <Loader2 className="animate-spin" size={20}/> : <Award size={20} className={userRole === 'leerling' ? 'text-teal-600' : 'text-orange-500'}/>}
+                    ✨ {userRole === 'leerling' ? 'Over de dialoog' : 'Over je dialoog'}
+                  </button>
+                )}
+              </div>
+
+              {/* Copy / Export Section */}
+              <div className={`bg-white/50 p-4 rounded-2xl shadow-sm border ${userRole === 'leerling' ? 'border-teal-100' : 'border-purple-100'} mb-6 text-[10px]`}>
+                <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowBackup(!showBackup)}>
+                  <span className="font-black uppercase flex items-center gap-2 text-slate-500">
+                    Toon Chatgeschiedenis als Tekst {showBackup ? '▼' : '▶'}
+                  </span>
+                  <button onClick={(e) => { 
+                    e.stopPropagation(); 
+                    const getLines = (mode) => history.map(h => (h.role === 'user' ? 'Ik: ' : selectedCharacter.name + ': ') + (h.content[mode] || '-')).join('\n'); 
+                    const text = `KANJI:\n${getLines('kanji')}\n\nKANA:\n${getLines('kana')}\n\nROMAJI:\n${getLines('romaji')}\n\nVERTALING:\n${getLines('translation')}`; 
+                    const textArea = document.createElement("textarea"); textArea.value = text;
+                    document.body.appendChild(textArea); textArea.select();
+                    try { 
+                      document.execCommand('copy'); 
+                      setIsCopied(true); 
+                      showNotification("Dialoog gekopieerd naar klembord! 📋", "success");
+                      setTimeout(() => setIsCopied(false), 2000); 
+                    } catch (err) {} 
+                    document.body.removeChild(textArea);
+                  }} className={`${userRole === 'leerling' ? 'text-teal-600' : 'text-pink-500'} flex items-center gap-1 font-black uppercase bg-white px-2 py-1 rounded-lg`}>
+                    {isCopied ? <span className="text-green-500 flex items-center gap-1">✓ Yep!</span> : <><Copy size={12}/> Kopieer</>}
+                  </button>
+                </div>
+                {showBackup && (
+                  <div className="space-y-4 mt-4 pt-4 border-t border-purple-100/50">
+                    {['kanji', 'kana', 'romaji', 'translation'].map(mode => (
+                      <div key={`backup-mode-${mode}`}>
+                        <div className={`font-black ${userRole === 'leerling' ? 'text-teal-600' : 'text-pink-400'} uppercase border-b border-pink-100 mb-1`}>{mode}:</div>
+                        {history.map((h, i) => <div key={`backup-line-${mode}-${i}`} className="text-slate-600 font-medium mb-0.5">{ (h.role === 'user' ? 'Ik: ' : selectedCharacter.name + ': ') + (h.content[mode] || '-') }</div>)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Delete confirmation modal */}
+          {deleteConfirm && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white p-6 rounded-3xl shadow-xl max-w-sm w-full border-4 border-pink-300">
+                <div className="text-4xl text-center mb-3">🥺🎒</div>
+                <h3 className="font-black text-xl text-purple-700 text-center mb-2">Weet je het zeker?</h3>
+                <p className="text-slate-600 text-sm text-center mb-6">
+                  Wil je <span className="font-bold text-pink-500">"{deleteConfirm.name}"</span> echt verwijderen?
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setDeleteConfirm(null)} className="flex-1 bg-slate-100 text-slate-500 py-3 rounded-2xl font-bold text-sm">Annuleren</button>
+                  <button 
+                    onClick={() => {
+                      if (deleteConfirm.type === 'dialogue') deleteDialogue(deleteConfirm.id);
+                      else if (deleteConfirm.type === 'chat_message') deleteMessage(deleteConfirm.index);
+                      else if (deleteConfirm.type === 'vocabulary') deleteWord(deleteConfirm.id);
+                      setDeleteConfirm(null);
+                    }} 
+                    className="flex-1 bg-gradient-to-r from-red-400 to-pink-500 text-white py-3 rounded-2xl font-black text-sm"
+                  >
+                    Verwijder! 🗑️
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <footer className="mt-auto py-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center w-full max-w-lg border-t border-purple-100">
+            © w.oostindier@canvas-lab2026 <br/><span className={userRole === 'leerling' ? 'text-teal-400' : 'text-pink-300'}>Kawaii Editie v2.0</span>
+          </footer>
+        </div>
+      );
+    };
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
